@@ -1,0 +1,10 @@
+# Arduino/ESP8266 Build Artifacts
+.DS_Store
+*.bin
+*.elf
+*.hex
+
+# Sensitive Files
+**/config.h
+**/secrets.h
+**/.env
