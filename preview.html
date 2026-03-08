@@ -7,7 +7,8 @@
     <title>ESP8266을 이용한 ST7565 LCD 및 SSD1306 OLED 제어 시스템</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=JetBrains+Mono&display=swap"
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=JetBrains+Mono&family=Press+Start+2P&display=swap"
         rel="stylesheet">
     <style>
         :root {
@@ -172,19 +173,22 @@
         }
 
         .lcd-st7565 {
-            background: #7ca88d;
-            /* LCD-ish Greenish color */
+            background: #0033cc;
+            /* Deep Blue Background */
             width: 100%;
             height: 160px;
             border-radius: 4px;
-            color: #1a2e21;
-            font-family: 'JetBrains Mono', monospace;
-            padding: 1rem;
+            color: #ffffff;
+            /* White Text */
+            font-family: 'Press Start 2P', cursive;
+            /* Dot-style Font */
+            padding: 1.25rem;
             display: flex;
             flex-direction: column;
             position: relative;
             overflow: hidden;
             transition: opacity 0.3s;
+            text-transform: uppercase;
         }
 
         .oled-ssd1306 {
@@ -214,9 +218,9 @@
         }
 
         .header-line {
-            font-size: 0.9rem;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.2);
-            padding-bottom: 4px;
+            font-size: 0.7rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+            padding-bottom: 6px;
             margin-bottom: 12px;
             display: flex;
             justify-content: space-between;
@@ -224,19 +228,30 @@
 
         .oled-ssd1306 .header-line {
             border-bottom: 1px solid #333;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
         }
 
         .content-area {
-            font-size: 0.8rem;
+            font-size: 0.6rem;
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 12px;
+        }
+
+        .oled-ssd1306 .content-area {
+            font-size: 0.8rem;
         }
 
         .msg-line {
-            font-size: 1.1rem;
-            margin-top: 8px;
+            font-size: 0.8rem;
+            margin-top: 4px;
             word-break: break-all;
+            line-height: 1.4;
+        }
+
+        .oled-ssd1306 .msg-line {
+            font-size: 1.1rem;
         }
 
         /* Gallery Section */
