@@ -1,12 +1,14 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP8266 Display Dashboard Preview</title>
+    <title>ESP8266을 이용한 ST7565 LCD 및 SSD1306 OLED 제어 시스템</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=JetBrains+Mono&display=swap"
+        rel="stylesheet">
     <style>
         :root {
             --bg-deep: #0f172a;
@@ -38,7 +40,7 @@
             position: fixed;
             width: 100vw;
             height: 100vh;
-            background: radial-gradient(circle at 50% 50%, rgba(56, 189, 248, 0.05) 0%, transparent 50%);
+            background: radial-gradient(circle at 50% 50%, rgba(56, 189, 248, 0.1) 0%, transparent 70%);
             z-index: -1;
         }
 
@@ -54,6 +56,7 @@
             font-weight: 600;
             background: linear-gradient(to right, #38bdf8, #818cf8);
             -webkit-background-clip: text;
+            background-clip: text;
             -webkit-text-fill-color: transparent;
             margin-bottom: 1rem;
         }
@@ -110,7 +113,8 @@
             color: var(--text-dim);
         }
 
-        input[type='text'], select {
+        input[type='text'],
+        select {
             width: 100%;
             padding: 0.875rem;
             border-radius: 1rem;
@@ -163,12 +167,13 @@
             padding: 2rem;
             background: #111;
             position: relative;
-            box-shadow: inset 0 0 20px rgba(0,0,0,0.8), 0 10px 30px rgba(0,0,0,0.5);
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8), 0 10px 30px rgba(0, 0, 0, 0.5);
             border: 4px solid #333;
         }
 
         .lcd-st7565 {
-            background: #7ca88d; /* LCD-ish Greenish color */
+            background: #7ca88d;
+            /* LCD-ish Greenish color */
             width: 100%;
             height: 160px;
             border-radius: 4px;
@@ -210,7 +215,7 @@
 
         .header-line {
             font-size: 0.9rem;
-            border-bottom: 1px solid rgba(0,0,0,0.2);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.2);
             padding-bottom: 4px;
             margin-bottom: 12px;
             display: flex;
@@ -305,11 +310,12 @@
         }
     </style>
 </head>
+
 <body>
     <div class="bg-glow"></div>
 
     <header>
-        <h1>Display Dashboard Preview</h1>
+        <h1>ESP8266을 이용한 ST7565 LCD 및 SSD1306 OLED 제어 시스템</h1>
         <p class="subtitle">ESP8266을 이용한 ST7565 LCD 및 SSD1306 OLED 동시 제어 시스템 미리보기</p>
     </header>
 
@@ -317,7 +323,13 @@
         <!-- Mock Controller Side -->
         <section class="card">
             <h2>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path
+                        d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z">
+                    </path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                </svg>
                 Remote Controller
             </h2>
             <form id="controlForm">
@@ -329,23 +341,23 @@
                 <div class="group">
                     <label>Screen Rotation</label>
                     <select id="rotSelect">
-                        <option value="0">0 Degrees</option>
+                        <option value="0" selected>0 Degrees</option>
                         <option value="1">90 Degrees</option>
-                        <option value="2" selected>180 Degrees</option>
+                        <option value="2">180 Degrees</option>
                         <option value="3">270 Degrees</option>
                     </select>
                 </div>
-                
+
                 <div class="group">
                     <label>LCD Backlight (Brightness)</label>
                     <input type="range" id="lcdRange" min="0" max="100" value="80">
                 </div>
-                
+
                 <div class="group">
                     <label>OLED Contrast</label>
                     <input type="range" id="oledRange" min="0" max="100" value="70">
                 </div>
-                
+
                 <button type="button" class="btn" onclick="updateMock()">Apply Settings</button>
             </form>
 
@@ -431,28 +443,24 @@
 
             // Update Rotation (Simulation)
             const rotationDeg = rot * 90;
-            document.getElementById('lcdScreen').style.transform = `rotate(${rotationDeg}deg)`;
-            document.getElementById('oledScreen').style.transform = `rotate(${rotationDeg}deg)`;
-            
-            // Adjust for rotation size if needed (simpler: just visual feedback)
-            if (rot % 2 !== 0) {
-                 document.getElementById('lcdScreen').style.maxWidth = '160px';
-                 document.getElementById('oledScreen').style.maxWidth = '160px';
-            } else {
-                 document.getElementById('lcdScreen').style.maxWidth = 'none';
-                 document.getElementById('oledScreen').style.maxWidth = 'none';
-            }
+            const lcd = document.getElementById('lcdScreen');
+            const oled = document.getElementById('oledScreen');
+
+            // 시각적 회전을 적용하되 내용이 뒤집히지 않게 처리
+            lcd.style.transform = `rotate(${rotationDeg}deg)`;
+            oled.style.transform = `rotate(${rotationDeg}deg)`;
 
             // Update Brightness/Contrast
             document.getElementById('lcdScreen').style.opacity = (lcdBright / 100) * 0.7 + 0.3; // Base visibility
-            
+
             const blueIntensity = Math.floor((oledCont / 100) * 255);
             document.getElementById('oledScreen').style.color = `rgb(56, 189, 248)`;
-            document.getElementById('oledScreen').style.borderColor = `rgba(56, 189, 248, ${oledCont/100})`;
+            document.getElementById('oledScreen').style.borderColor = `rgba(56, 189, 248, ${oledCont / 100})`;
         }
 
         // Initialize
         updateMock();
     </script>
 </body>
+
 </html>

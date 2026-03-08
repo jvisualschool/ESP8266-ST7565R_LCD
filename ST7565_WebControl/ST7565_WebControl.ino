@@ -33,10 +33,10 @@ int rotationMode = 0; // 0, 1, 2, 3 (90도 단위)
 void updateDisplays() {
   // LCD (ST7565) 회전 적용
   switch(rotationMode) {
-    case 0: u8g2.setDisplayRotation(U8G2_R2); break;
-    case 1: u8g2.setDisplayRotation(U8G2_R3); break;
-    case 2: u8g2.setDisplayRotation(U8G2_R0); break;
-    case 3: u8g2.setDisplayRotation(U8G2_R1); break;
+    case 0: u8g2.setDisplayRotation(U8G2_R0); break;
+    case 1: u8g2.setDisplayRotation(U8G2_R1); break;
+    case 2: u8g2.setDisplayRotation(U8G2_R2); break;
+    case 3: u8g2.setDisplayRotation(U8G2_R3); break;
   }
   
   u8g2.clearBuffer();
