@@ -254,48 +254,6 @@
             font-size: 1.1rem;
         }
 
-        /* Gallery Section */
-        .gallery {
-            max-width: 1200px;
-            margin: 4rem auto;
-            padding: 0 2rem;
-        }
-
-        .gallery h2 {
-            text-align: center;
-            margin-bottom: 3rem;
-            font-size: 2rem;
-        }
-
-        .gallery-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
-        }
-
-        .gallery-item {
-            border-radius: 1rem;
-            overflow: hidden;
-            border: 1px solid var(--border);
-            transition: transform 0.3s;
-        }
-
-        .gallery-item:hover {
-            transform: scale(1.02);
-        }
-
-        .gallery-item img {
-            width: 100%;
-            display: block;
-        }
-
-        .gallery-item p {
-            padding: 1rem;
-            background: var(--bg-card);
-            text-align: center;
-            font-size: 0.9rem;
-            color: var(--text-dim);
-        }
 
         footer {
             text-align: center;
@@ -422,23 +380,6 @@
         </section>
     </main>
 
-    <section class="gallery">
-        <h2>실제 하드웨어 구동 모습</h2>
-        <div class="gallery-grid">
-            <div class="gallery-item">
-                <img src="./screenshot/screenshot1_slim.webp" alt="WiFi Connecting">
-                <p>부팅 및 WiFi 연결 상태</p>
-            </div>
-            <div class="gallery-item">
-                <img src="./screenshot/screenshot2_slim.webp" alt="Web Dashboard">
-                <p>브라우저 제어 인터페이스</p>
-            </div>
-            <div class="gallery-item">
-                <img src="./screenshot/screenshot3_slim.webp" alt="Hardware Running">
-                <p>실제 하드웨어 구동 샷</p>
-            </div>
-        </div>
-    </section>
 
     <footer>
         <p>&copy; 2026 jvisualschool. Built with ESP8266 & Dual Display Logic.</p>
