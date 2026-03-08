@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP8266 Display Dashboard Preview</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-deep: #0f172a;
+            --bg-card: #1e293b;
+            --accent: #38bdf8;
+            --accent-hover: #0ea5e9;
+            --text-main: #f8fafc;
+            --text-dim: #94a3b8;
+            --glass: rgba(30, 41, 59, 0.7);
+            --border: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-main);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Background Graphics */
+        .bg-glow {
+            position: fixed;
+            width: 100vw;
+            height: 100vh;
+            background: radial-gradient(circle at 50% 50%, rgba(56, 189, 248, 0.05) 0%, transparent 50%);
+            z-index: -1;
+        }
+
+        header {
+            padding: 4rem 2rem;
+            text-align: center;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 3rem;
+            font-weight: 600;
+            background: linear-gradient(to right, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+        }
+
+        .subtitle {
+            font-size: 1.25rem;
+            color: var(--text-dim);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        main {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+        }
+
+        @media (max-width: 900px) {
+            main {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Mock Dashboard Control */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 1.5rem;
+            padding: 2.5rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+        }
+
+        .card h2 {
+            font-size: 1.5rem;
+            margin-bottom: 2rem;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+            color: var(--text-dim);
+        }
+
+        input[type='text'], select {
+            width: 100%;
+            padding: 0.875rem;
+            border-radius: 1rem;
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: white;
+            font-family: inherit;
+            transition: border-color 0.3s;
+        }
+
+        input[type='text']:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        input[type='range'] {
+            width: 100%;
+            cursor: pointer;
+            accent-color: var(--accent);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 1rem;
+            border-radius: 1rem;
+            border: none;
+            background: var(--accent);
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 14px 0 rgba(14, 165, 233, 0.39);
+        }
+
+        .btn:hover {
+            background: var(--accent-hover);
+            transform: translateY(-2px);
+        }
+
+        /* Mock Display Preview */
+        .preview-pane {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .display-mock {
+            border-radius: 1rem;
+            padding: 2rem;
+            background: #111;
+            position: relative;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8), 0 10px 30px rgba(0,0,0,0.5);
+            border: 4px solid #333;
+        }
+
+        .lcd-st7565 {
+            background: #7ca88d; /* LCD-ish Greenish color */
+            width: 100%;
+            height: 160px;
+            border-radius: 4px;
+            color: #1a2e21;
+            font-family: 'JetBrains Mono', monospace;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+            transition: opacity 0.3s;
+        }
+
+        .oled-ssd1306 {
+            background: #000;
+            width: 100%;
+            height: 160px;
+            border-radius: 4px;
+            color: #38bdf8;
+            font-family: 'JetBrains Mono', monospace;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            border: 2px solid #222;
+            transition: border-color 0.3s;
+        }
+
+        .display-label {
+            position: absolute;
+            top: -12px;
+            left: 20px;
+            background: #333;
+            color: #999;
+            font-size: 0.65rem;
+            padding: 2px 8px;
+            border-radius: 4px;
+            letter-spacing: 1px;
+        }
+
+        .header-line {
+            font-size: 0.9rem;
+            border-bottom: 1px solid rgba(0,0,0,0.2);
+            padding-bottom: 4px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .oled-ssd1306 .header-line {
+            border-bottom: 1px solid #333;
+        }
+
+        .content-area {
+            font-size: 0.8rem;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .msg-line {
+            font-size: 1.1rem;
+            margin-top: 8px;
+            word-break: break-all;
+        }
+
+        /* Gallery Section */
+        .gallery {
+            max-width: 1200px;
+            margin: 4rem auto;
+            padding: 0 2rem;
+        }
+
+        .gallery h2 {
+            text-align: center;
+            margin-bottom: 3rem;
+            font-size: 2rem;
+        }
+
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .gallery-item {
+            border-radius: 1rem;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            transition: transform 0.3s;
+        }
+
+        .gallery-item:hover {
+            transform: scale(1.02);
+        }
+
+        .gallery-item img {
+            width: 100%;
+            display: block;
+        }
+
+        .gallery-item p {
+            padding: 1rem;
+            background: var(--bg-card);
+            text-align: center;
+            font-size: 0.9rem;
+            color: var(--text-dim);
+        }
+
+        footer {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-dim);
+            font-size: 0.875rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .hardware-info {
+            background: rgba(56, 189, 248, 0.05);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-top: 2rem;
+            font-size: 0.8rem;
+        }
+
+        .hardware-info ul {
+            list-style: none;
+            margin-top: 0.5rem;
+        }
+
+        .hardware-info li {
+            margin-bottom: 0.25rem;
+            display: flex;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-glow"></div>
+
+    <header>
+        <h1>Display Dashboard Preview</h1>
+        <p class="subtitle">ESP8266을 이용한 ST7565 LCD 및 SSD1306 OLED 동시 제어 시스템 미리보기</p>
+    </header>
+
+    <main>
+        <!-- Mock Controller Side -->
+        <section class="card">
+            <h2>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                Remote Controller
+            </h2>
+            <form id="controlForm">
+                <div class="group">
+                    <label>Display Message</label>
+                    <input type="text" id="msgInput" placeholder="Enter message..." value="Hello World!">
+                </div>
+
+                <div class="group">
+                    <label>Screen Rotation</label>
+                    <select id="rotSelect">
+                        <option value="0">0 Degrees</option>
+                        <option value="1">90 Degrees</option>
+                        <option value="2" selected>180 Degrees</option>
+                        <option value="3">270 Degrees</option>
+                    </select>
+                </div>
+                
+                <div class="group">
+                    <label>LCD Backlight (Brightness)</label>
+                    <input type="range" id="lcdRange" min="0" max="100" value="80">
+                </div>
+                
+                <div class="group">
+                    <label>OLED Contrast</label>
+                    <input type="range" id="oledRange" min="0" max="100" value="70">
+                </div>
+                
+                <button type="button" class="btn" onclick="updateMock()">Apply Settings</button>
+            </form>
+
+            <div class="hardware-info">
+                <strong>System Hardware Specs</strong>
+                <ul>
+                    <li><span>Microcontroller</span><span>ESP8266 (NodeMCU)</span></li>
+                    <li><span>Main Display</span><span>ST7565 LCD (128x64)</span></li>
+                    <li><span>Secondary Display</span><span>SSD1306 OLED (128x64)</span></li>
+                    <li><span>Connection</span><span>WiFi 2.4G (ST Mode)</span></li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Preview Pane Side -->
+        <section class="preview-pane">
+            <!-- ST7565 LCD Mock -->
+            <div class="display-mock">
+                <span class="display-label">LCD ST7565 (SPI)</span>
+                <div id="lcdScreen" class="lcd-st7565">
+                    <div class="header-line">
+                        <span>DASHBOARD</span>
+                        <span id="lcdIp">192.168.0.42</span>
+                    </div>
+                    <div class="content-area">
+                        <span>IP: 192.168.0.42</span>
+                        <span>MSG:</span>
+                        <div class="msg-line" id="lcdMsgTxt">Hello World!</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SSD1306 OLED Mock -->
+            <div class="display-mock">
+                <span class="display-label">OLED SSD1306 (I2C)</span>
+                <div id="oledScreen" class="oled-ssd1306">
+                    <div class="header-line">
+                        <span>DASHBOARD</span>
+                        <span id="oledIp">192.168.0.42</span>
+                    </div>
+                    <div class="content-area">
+                        <span>IP: 192.168.0.42</span>
+                        <span>MSG:</span>
+                        <div class="msg-line" id="oledMsgTxt">Hello World!</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <section class="gallery">
+        <h2>실제 하드웨어 구동 모습</h2>
+        <div class="gallery-grid">
+            <div class="gallery-item">
+                <img src="./screenshot/screenshot1_slim.webp" alt="WiFi Connecting">
+                <p>부팅 및 WiFi 연결 상태</p>
+            </div>
+            <div class="gallery-item">
+                <img src="./screenshot/screenshot2_slim.webp" alt="Web Dashboard">
+                <p>브라우저 제어 인터페이스</p>
+            </div>
+            <div class="gallery-item">
+                <img src="./screenshot/screenshot3_slim.webp" alt="Hardware Running">
+                <p>실제 하드웨어 구동 샷</p>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <p>&copy; 2026 jvisualschool. Built with ESP8266 & Dual Display Logic.</p>
+    </footer>
+
+    <script>
+        function updateMock() {
+            const msg = document.getElementById('msgInput').value;
+            const rot = document.getElementById('rotSelect').value;
+            const lcdBright = document.getElementById('lcdRange').value;
+            const oledCont = document.getElementById('oledRange').value;
+
+            // Update Text
+            document.getElementById('lcdMsgTxt').innerText = msg;
+            document.getElementById('oledMsgTxt').innerText = msg;
+
+            // Update Rotation (Simulation)
+            const rotationDeg = rot * 90;
+            document.getElementById('lcdScreen').style.transform = `rotate(${rotationDeg}deg)`;
+            document.getElementById('oledScreen').style.transform = `rotate(${rotationDeg}deg)`;
+            
+            // Adjust for rotation size if needed (simpler: just visual feedback)
+            if (rot % 2 !== 0) {
+                 document.getElementById('lcdScreen').style.maxWidth = '160px';
+                 document.getElementById('oledScreen').style.maxWidth = '160px';
+            } else {
+                 document.getElementById('lcdScreen').style.maxWidth = 'none';
+                 document.getElementById('oledScreen').style.maxWidth = 'none';
+            }
+
+            // Update Brightness/Contrast
+            document.getElementById('lcdScreen').style.opacity = (lcdBright / 100) * 0.7 + 0.3; // Base visibility
+            
+            const blueIntensity = Math.floor((oledCont / 100) * 255);
+            document.getElementById('oledScreen').style.color = `rgb(56, 189, 248)`;
+            document.getElementById('oledScreen').style.borderColor = `rgba(56, 189, 248, ${oledCont/100})`;
+        }
+
+        // Initialize
+        updateMock();
+    </script>
+</body>
+</html>
