@@ -4,6 +4,11 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Wire.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClient.h>
+#include <ArduinoJson.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
 
 // --- 하드웨어 설정 ---
 #define SCREEN_WIDTH 128
@@ -13,7 +18,6 @@
 #define OLED_SCL 12 // D6
 
 Adafruit_SSD1306 oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-// CLK을 D3(GPIO0)으로 변경: D5(GPIO14)는 OLED SDA(Wire)와 충돌함
 U8G2_ST7565_ERC12864_F_4W_SW_SPI u8g2(U8G2_R2, /* clock=*/ 0, /* data=*/ 13, /* cs=*/ 16, /* dc=*/ 4, /* reset=*/ 5);
 
 #include "config.h"
@@ -24,169 +28,337 @@ const char* password = WIFI_PASSWORD;
 ESP8266WebServer server(80);
 
 // 전역 상태 변수
-String displayText = "WiFi Connecting...";
+String displayText = "HELLO!";
 int lcdBrightness = 800;
 int oledBrightness = 127;
 int rotationMode = 0; // 0, 1, 2, 3 (90도 단위)
+int fontSizeIndex = 1; 
+int displayMode = 3;   // 기본 모드: 시계 (3)
+bool isControlMode = false; // 부팅 시 IP 표시를 위해 false로 시작
+unsigned long connectTime = 0; // WiFi 연결 시점 기록용
 
-// --- 디스플레이 업데이트 함수 ---
+// 날씨 데이터
+String weatherMain = "";
+String weatherDesc = "";
+float weatherTemp = 0.0;
+int weatherHumid = 0;
+float weatherWind = 0.0;
+unsigned long lastWeatherUpdate = 0;
+const unsigned long weatherInterval = 600000; // 10분마다 갱신
+
+// NTP 설정 (대한민국 시간 KST: UTC+9)
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 32400, 60000);
+
+// 스톱워치/타이머 변수
+unsigned long stopwatchStart = 0;
+unsigned long stopwatchElapsed = 0;
+bool stopwatchRunning = false;
+long timerRemaining = 0; // 초 단위
+unsigned long lastTimerUpdate = 0;
+bool timerRunning = false;
+
+// 애니메이션 변수
+int animType = 0; // 0~9
+
+// --- 애니메이션 함수들 ---
+void drawStarfield() {
+  for(int i=0; i<20; i++) {
+    int x = (millis()/5 + i*13) % 128;
+    int y = (i*7) % 64;
+    u8g2.drawPixel(x, y);
+    oled.drawPixel(x, y, SSD1306_WHITE);
+  }
+}
+
+void drawSineWaves() {
+  for(int x=0; x<128; x++) {
+    int y = 32 + 15 * sin((x + millis()/10) * 0.1);
+    u8g2.drawPixel(x, y);
+    oled.drawPixel(x, y, SSD1306_WHITE);
+  }
+}
+
+void drawBouncingBall() {
+  static int bx=64, by=32, bvx=2, bvy=3;
+  bx += bvx; by += bvy;
+  if(bx<=0 || bx>=127) bvx *= -1;
+  if(by<=0 || by>=63) bvy *= -1;
+  u8g2.drawDisc(bx, by, 5);
+  oled.fillCircle(bx, by, 5, SSD1306_WHITE);
+}
+
+void drawExpandingRings() {
+  int r = (millis()/20) % 60;
+  u8g2.drawCircle(64, 32, r);
+  u8g2.drawCircle(64, 32, (r+20)%60);
+  oled.drawCircle(64, 32, r, SSD1306_WHITE);
+  oled.drawCircle(64, 32, (r+20)%60, SSD1306_WHITE);
+}
+
+void drawHelix() {
+  for(int y=0; y<64; y++) {
+    int x1 = 64 + 20 * sin((y + millis()/5) * 0.2);
+    int x2 = 64 - 20 * sin((y + millis()/5) * 0.2);
+    u8g2.drawPixel(x1, y); u8g2.drawPixel(x2, y);
+    oled.drawPixel(x1, y, SSD1306_WHITE); oled.drawPixel(x2, y, SSD1306_WHITE);
+  }
+}
+
+void drawMatrix() {
+  for(int i=0; i<10; i++) {
+    int x = (i*13);
+    int y = (millis()/(5+i) + i*10) % 80 - 10;
+    u8g2.setFont(u8g2_font_4x6_tf);
+    u8g2.drawStr(x, y, "101");
+    oled.setCursor(x, y); oled.print(random(0,2));
+  }
+}
+
+void drawSnow() {
+  for(int i=0; i<15; i++) {
+    int x = (i*20 + i*i) % 128;
+    int y = (millis()/(10+i)) % 64;
+    u8g2.drawPixel(x,y); u8g2.drawPixel(x+1,y);
+    oled.drawPixel(x,y,SSD1306_WHITE);
+  }
+}
+
+void drawPlasma() {
+  static float t=0; t+=0.1;
+  for(int i=0; i<5; i++) {
+    int r = 10 + 10*sin(t + i);
+    u8g2.drawFrame(64-r*2, 32-r, r*4, r*2);
+    oled.drawRect(64-r*2, 32-r, r*4, r*2, SSD1306_WHITE);
+  }
+}
+
+void drawGrid() {
+  int offset = (millis()/50)%20;
+  for(int i=offset; i<128; i+=20) { u8g2.drawLine(i,0,i,64); oled.drawLine(i,0,i,64,SSD1306_WHITE); }
+  for(int i=offset; i<64; i+=20) { u8g2.drawLine(0,i,128,i); oled.drawLine(0,i,128,i,SSD1306_WHITE); }
+}
+
+void drawNoise() {
+  for(int i=0; i<100; i++) {
+    int x = random(0,128); int y = random(0,64);
+    u8g2.drawPixel(x,y); oled.drawPixel(x,y,SSD1306_WHITE);
+  }
+}
+
+void fetchWeather() {
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFiClient client;
+    HTTPClient http;
+    String url = "http://api.openweathermap.org/data/2.5/weather?q=Seoul,kr&appid=" + String(WEATHER_API_KEY) + "&units=metric";
+    if (http.begin(client, url)) {
+      int httpCode = http.GET();
+      if (httpCode == HTTP_CODE_OK) {
+        String payload = http.getString();
+        DynamicJsonDocument doc(1024);
+        deserializeJson(doc, payload);
+        weatherMain = doc["weather"][0]["main"].as<String>();
+        weatherDesc = doc["weather"][0]["description"].as<String>();
+        weatherTemp = doc["main"]["temp"];
+        weatherHumid = doc["main"]["humidity"];
+        weatherWind = doc["wind"]["speed"];
+        lastWeatherUpdate = millis();
+      }
+      http.end();
+    }
+  }
+}
+
 void updateDisplays() {
-  // LCD (ST7565) 회전 적용
   switch(rotationMode) {
     case 0: u8g2.setDisplayRotation(U8G2_R0); break;
     case 1: u8g2.setDisplayRotation(U8G2_R1); break;
     case 2: u8g2.setDisplayRotation(U8G2_R2); break;
     case 3: u8g2.setDisplayRotation(U8G2_R3); break;
   }
-  
-  u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_6x10_tf); // 가독성 좋은 폰트로 변경
-  u8g2.drawStr(0, 12, "DISPLAY DASHBOARD");
-  u8g2.drawLine(0, 15, 128, 15);
-  
-  u8g2.drawStr(0, 30, "IP:");
-  u8g2.drawStr(25, 30, WiFi.localIP().toString().c_str());
-  
-  u8g2.drawStr(0, 45, "MSG:");
-  u8g2.drawStr(0, 58, displayText.c_str());
-  u8g2.sendBuffer();
-
-  // OLED (SSD1306) 회전 적용
   oled.setRotation(rotationMode);
+
+  u8g2.clearBuffer();
   oled.clearDisplay();
-  oled.setTextSize(1);
   oled.setTextColor(SSD1306_WHITE);
-  oled.setCursor(0, 0);
-  oled.println("DISPLAY DASHBOARD");
-  oled.drawLine(0, 12, 128, 12, SSD1306_WHITE);
-  
-  oled.setCursor(0, 20);
-  oled.print("IP: ");
-  oled.println(WiFi.localIP().toString());
-  
-  oled.setCursor(0, 35);
-  oled.print("MSG: ");
-  oled.setCursor(0, 48);
-  oled.println(displayText);
+
+  // ST7565 LCD Logic
+  if (!isControlMode) {
+    u8g2.setFont(u8g2_font_6x10_tf);
+    u8g2.drawStr(0, 12, "DISPLAY DASHBOARD");
+    u8g2.drawLine(0, 15, 128, 15);
+    u8g2.drawStr(0, 30, "IP:");
+    u8g2.drawStr(25, 30, WiFi.localIP().toString().c_str());
+    u8g2.drawStr(0, 45, "MSG:");
+    u8g2.drawStr(0, 58, displayText.c_str());
+  } else {
+    if (displayMode == 0) {
+      if (fontSizeIndex == 0) u8g2.setFont(u8g2_font_5x7_tf);
+      else if (fontSizeIndex == 1) u8g2.setFont(u8g2_font_helvB08_tr);
+      else if (fontSizeIndex == 2) u8g2.setFont(u8g2_font_helvB10_tr);
+      else if (fontSizeIndex == 3) u8g2.setFont(u8g2_font_helvB12_tr);
+      else if (fontSizeIndex == 4) u8g2.setFont(u8g2_font_logisoso16_tr);
+      else if (fontSizeIndex == 5) u8g2.setFont(u8g2_font_logisoso20_tr);
+      else if (fontSizeIndex == 6) u8g2.setFont(u8g2_font_logisoso24_tr);
+      else if (fontSizeIndex == 7) u8g2.setFont(u8g2_font_logisoso32_tr);
+      else if (fontSizeIndex == 8) u8g2.setFont(u8g2_font_logisoso42_tr);
+      else if (fontSizeIndex == 9) u8g2.setFont(u8g2_font_logisoso50_tr);
+      else u8g2.setFont(u8g2_font_logisoso58_tr);
+
+      int width = u8g2.getStrWidth(displayText.c_str());
+      int x = (128 - width) / 2; if (x < 0) x = 0;
+      int y;
+      switch(fontSizeIndex) {
+        case 0: y=35; break; case 1: y=36; break; case 2: y=37; break; case 3: y=38; break; case 4: y=40; break; case 5: y=42; break; case 6: y=44; break; case 7: y=48; break; case 8: y=52; break; case 9: y=56; break; case 10: y=60; break; default: y=44;
+      }
+      u8g2.drawStr(x, y, displayText.c_str());
+    } else if (displayMode == 1) {
+      unsigned long s = millis() / 1000; unsigned long m = s / 60; unsigned long h = m / 60; unsigned long d = h / 24;
+      s %= 60; m %= 60; h %= 24;
+      u8g2.setFont(u8g2_font_6x10_tf);
+      u8g2.drawStr(0, 10, "SYSTEM INFORMATION"); u8g2.drawLine(0, 12, 128, 12);
+      u8g2.setCursor(0, 25); u8g2.print("CPU Clock: "); u8g2.print(ESP.getCpuFreqMHz()); u8g2.print(" MHz");
+      u8g2.setCursor(0, 37); u8g2.print("Flash: "); u8g2.print(ESP.getFlashChipSize()/1024); u8g2.print(" KB");
+      u8g2.setCursor(0, 49); u8g2.print("Free Heap: "); u8g2.print(ESP.getFreeHeap()/1024); u8g2.print(" KB");
+      u8g2.setCursor(0, 61); u8g2.print("Uptime: "); u8g2.print(d); u8g2.print("d "); u8g2.print(h); u8g2.print("h "); u8g2.print(m); u8g2.print("m "); u8g2.print(s); u8g2.print("s");
+    } else if (displayMode == 2) {
+      u8g2.setFont(u8g2_font_6x10_tf); u8g2.drawStr(0, 10, "SEOUL WEATHER"); u8g2.drawLine(0, 12, 128, 12);
+      u8g2.setFont(u8g2_font_7x14_tf); u8g2.setCursor(0, 28); u8g2.print(weatherTemp, 1); u8g2.print(" C, "); u8g2.print(weatherMain);
+      u8g2.setFont(u8g2_font_6x10_tf); u8g2.setCursor(0, 42); u8g2.print("Desc: "); u8g2.print(weatherDesc);
+      u8g2.setCursor(0, 52); u8g2.print("Humid: "); u8g2.print(weatherHumid); u8g2.print("%");
+      u8g2.setCursor(0, 62); u8g2.print("Wind: "); u8g2.print(weatherWind); u8g2.print(" m/s");
+    } else if (displayMode == 3) {
+      // 시계 모드 (상단에 날짜, 하단에 시간 크게 표시)
+      timeClient.update();
+      time_t now = (time_t)timeClient.getEpochTime();
+      
+      if (now < 100000) {
+        u8g2.setFont(u8g2_font_6x10_tf);
+        u8g2.drawStr(20, 35, "Syncing Time...");
+      } else {
+        struct tm *ti = localtime(&now);
+        int year = ti->tm_year + 1900;
+        int month = ti->tm_mon + 1;
+        int mday = ti->tm_mday;
+        int wday = ti->tm_wday;
+        const char* days[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+
+        char dateBuf[32];
+        sprintf(dateBuf, "%04d-%02d-%02d (%s)", year, month, mday, days[wday]);
+        String curTime = timeClient.getFormattedTime();
+
+        u8g2.setFont(u8g2_font_6x10_tf); 
+        int dw = u8g2.getStrWidth(dateBuf);
+        u8g2.drawStr((128 - dw) / 2, 12, dateBuf); 
+
+        u8g2.setFont(u8g2_font_logisoso24_tr); 
+        int tw = u8g2.getStrWidth(curTime.c_str());
+        u8g2.drawStr((128 - tw) / 2, 45, curTime.c_str());
+
+        // 하단 날씨 표시
+        u8g2.setFont(u8g2_font_6x10_tf);
+        char weaBuf[32];
+        sprintf(weaBuf, "Seoul: %.1fC, %s", weatherTemp, weatherMain.c_str());
+        int ww = u8g2.getStrWidth(weaBuf);
+        u8g2.drawStr((128 - ww) / 2, 62, weaBuf);
+      }
+
+    } else if (displayMode == 4) {
+      u8g2.setFont(u8g2_font_5x7_tf); u8g2.drawStr(0, 7, "ANIMATION MODE");
+      switch(animType) {
+        case 0: drawStarfield(); break; case 1: drawSineWaves(); break; case 2: drawBouncingBall(); break; case 3: drawExpandingRings(); break; case 4: drawHelix(); break; case 5: drawMatrix(); break; case 6: drawSnow(); break; case 7: drawPlasma(); break; case 8: drawGrid(); break; case 9: drawNoise(); break;
+      }
+    }
+  }
+
+  // OLED Logic (Always Uptime)
+  unsigned long totalSec = millis() / 1000;
+  unsigned long os = totalSec % 60; unsigned long om = (totalSec / 60) % 60; unsigned long oh = (totalSec / 3600) % 24; unsigned long od = totalSec / 86400;
+  oled.setTextSize(1); oled.setCursor(0, 0); oled.println("SYSTEM UPTIME"); oled.drawLine(0, 10, 128, 10, SSD1306_WHITE);
+  oled.setTextSize(2); oled.setCursor(0, 25);
+  oled.print(od); oled.print("d "); oled.print(oh); oled.print("h"); oled.setCursor(0, 45);
+  oled.print(om); oled.print("m "); oled.print(os); oled.print("s");
+
+  u8g2.sendBuffer();
   oled.display();
 }
 
-// --- 웹 페이지 핸들러 ---
 void handleRoot() {
-  String html = "<!DOCTYPE html><html><head>";
-  html += "<meta charset='UTF-8'>";
-  html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
-  html += "<style>";
-  html += "body { font-family: 'Inter', sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }";
-  html += ".container { background: #1e293b; padding: 2rem; border-radius: 1.5rem; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); width: 90%; max-width: 400px; }";
-  html += "h1 { font-size: 1.5rem; margin-bottom: 1.5rem; text-align: center; color: #38bdf8; }";
-  html += ".group { margin-bottom: 1.5rem; }";
-  html += "label { display: block; margin-bottom: 0.5rem; font-size: 0.875rem; color: #94a3b8; }";
-  html += "input[type='text'], select { width: 100%; padding: 0.75rem; border-radius: 0.75rem; border: 1px solid #334155; background: #0f172a; color: white; box-sizing: border-box; }";
-  html += "input[type='range'] { width: 100%; cursor: pointer; accent-color: #38bdf8; }";
-  html += "button { width: 100%; padding: 0.75rem; border-radius: 0.75rem; border: none; background: #0ea5e9; color: white; font-weight: 600; cursor: pointer; transition: 0.3s; }";
-  html += "button:hover { background: #0284c7; }";
-  html += "</style></head><body>";
-  html += "<div class='container'><h1>Display Dashboard</h1>";
-  html += "<form action='/update' method='POST'>";
-  
-  html += "<div class='group'><label>Display Message</label>";
-  html += "<input type='text' name='msg' value='" + displayText + "'></div>";
-
-  html += "<div class='group'><label>Screen Rotation</label>";
-  html += "<select name='rot'>";
-  html += "<option value='0'" + String(rotationMode==0?" selected":"") + ">0 Degrees</option>";
-  html += "<option value='1'" + String(rotationMode==1?" selected":"") + ">90 Degrees</option>";
-  html += "<option value='2'" + String(rotationMode==2?" selected":"") + ">180 Degrees</option>";
-  html += "<option value='3'" + String(rotationMode==3?" selected":"") + ">270 Degrees</option>";
+  if (!isControlMode) { isControlMode = true; updateDisplays(); }
+  String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><style>body{font-family:'Inter',sans-serif;background:#0f172a;color:#f8fafc;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}.container{background:#1e293b;padding:2rem;border-radius:1.5rem;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);width:90%;max-width:400px;}h1{font-size:1.5rem;margin-bottom:1.5rem;text-align:center;color:#38bdf8;}.group{margin-bottom:1.2rem;}label{display:block;margin-bottom:0.5rem;font-size:0.875rem;color:#94a3b8;}input[type='text'],select{width:100%;padding:0.75rem;border-radius:0.75rem;border:1px solid #334155;background:#0f172a;color:white;box-sizing:border-box;}input[type='range']{width:100%;cursor:pointer;accent-color:#38bdf8;}button{width:100%;padding:0.75rem;border-radius:0.75rem;border:none;background:#0ea5e9;color:white;font-weight:600;cursor:pointer;transition:0.3s;}button:hover{background:#0284c7;}</style></head><body><div class='container'><h1>Dashboard</h1><form action='/update' method='POST'><div class='group'><label>Message</label><input type='text' name='msg' value='"+displayText+"'></div><div class='group'><label>Rotation</label><select name='rot'>";
+  for(int i=0; i<4; i++) html += "<option value='"+String(i)+"'"+(rotationMode==i?" selected":"")+">"+String(i*90)+"</option>";
+  html += "</select></div><div class='group'><label>LCD Bright</label><input type='range' name='lcd' min='0' max='1023' value='"+String(lcdBrightness)+"'></div><div class='group'><label>Font Size</label><select name='fsize'>";
+  int sz[] = {6,8,10,12,16,20,24,32,42,50,58};
+  for(int i=0; i<11; i++) html += "<option value='"+String(i)+"'"+(fontSizeIndex==i?" selected":"")+">"+String(sz[i])+" px</option>";
+  html += "</select></div><div class='group'><label>Mode</label><select name='mode'>";
+  String md[] = {"Message", "System", "Weather", "Clock", "Animation"};
+  for(int i=0; i<5; i++) html += "<option value='"+String(i)+"'"+(displayMode==i?" selected":"")+">"+md[i]+"</option>";
   html += "</select></div>";
-  
-  html += "<div class='group'><label>LCD Backlight</label>";
-  html += "<input type='range' name='lcd' min='0' max='1023' value='" + String(lcdBrightness) + "'></div>";
-  
-  html += "<div class='group'><label>OLED Contrast</label>";
-  html += "<input type='range' name='oled' min='0' max='255' value='" + String(oledBrightness) + "'></div>";
-  
-  html += "<button type='submit'>Apply Settings</button></form></div>";
-  html += "</body></html>";
+
+  if(displayMode==4){ html += "<div class='group'><label>Anim</label><select name='atype' onchange='fetch(\"/update?atype=\"+this.value).then(()=>location.reload())'>";
+    for(int i=0; i<10; i++) html += "<option value='"+String(i)+"'"+(animType==i?" selected":"")+">Anim "+String(i+1)+"</option>";
+    html += "</select></div>";
+  }
+  html += "<button type='submit'>Apply</button></form></div></body></html>";
   server.send(200, "text/html", html);
 }
 
 void handleUpdate() {
   if (server.hasArg("msg")) displayText = server.arg("msg");
   if (server.hasArg("rot")) rotationMode = server.arg("rot").toInt();
-  if (server.hasArg("lcd")) {
-    lcdBrightness = server.arg("lcd").toInt();
-    analogWrite(2, lcdBrightness); // D4
-  }
-  if (server.hasArg("oled")) {
-    oledBrightness = server.arg("oled").toInt();
-    oled.ssd1306_command(SSD1306_SETCONTRAST);
-    oled.ssd1306_command(oledBrightness);
-  }
-  updateDisplays();
-  server.sendHeader("Location", "/");
-  server.send(303);
+  if (server.hasArg("lcd")) { lcdBrightness = server.arg("lcd").toInt(); analogWrite(2, lcdBrightness); }
+  if (server.hasArg("fsize")) fontSizeIndex = server.arg("fsize").toInt();
+  if (server.hasArg("mode")) { displayMode = server.arg("mode").toInt(); if (displayMode == 2) fetchWeather(); }
+  if (server.hasArg("atype")) animType = server.arg("atype").toInt();
+  updateDisplays(); server.sendHeader("Location", "/"); server.send(303);
+}
+
+void handleSW() {
+  String c = server.arg("cmd");
+  if (c == "toggle") { if (stopwatchRunning) { stopwatchElapsed += (millis() - stopwatchStart); stopwatchRunning = false; } else { stopwatchStart = millis(); stopwatchRunning = true; } }
+  else if (c == "reset") { stopwatchElapsed = 0; stopwatchStart = millis(); }
+  server.send(200, "text/plain", "ok");
+}
+
+void handleTimer() {
+  if (server.hasArg("s")) { timerRemaining = server.arg("s").toInt(); timerRunning = true; lastTimerUpdate = millis(); }
+  server.send(200, "text/plain", "ok");
 }
 
 void setup() {
-  Serial.begin(115200);
-  
-  // I2C & OLED 초기화
-  Wire.begin(OLED_SDA, OLED_SCL);
-  if(!oled.begin(SSD1306_SWITCHCAPVCC, 0x3C)) Serial.println("OLED Failed");
-  oled.setRotation(0);
-  
-  // ST7565 초기화
-  u8g2.begin();
-  u8g2.setContrast(22);
-  
-  // LCD 백라이트 핀 설정
-  pinMode(2, OUTPUT); // D4
-  analogWrite(2, lcdBrightness);
-
-  // WiFi Station 모드 설정
-  Serial.print("Connecting to WiFi...");
-  WiFi.begin(ssid, password);
-  
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-    
-    // OLED에 상태 표시
-    oled.clearDisplay();
-    oled.setCursor(0, 30);
-    oled.println("Connecting WiFi...");
-    oled.print("SSID: "); oled.println(ssid);
-    oled.display();
-
-    // LCD에 상태 표시
-    u8g2.clearBuffer();
-    u8g2.setFont(u8g2_font_6x10_tf);
-    u8g2.drawStr(0, 30, "Connecting WiFi...");
-    u8g2.drawStr(0, 45, ssid);
-    u8g2.sendBuffer();
-    
-    if (millis() > 30000 && WiFi.status() != WL_CONNECTED) {
-      Serial.println("\nWiFi Fail - Restarting AP Mode fallback?");
-      // 30초 넘게 연결 안되면 알 수 있도록 문구 변경
-      u8g2.drawStr(0, 60, "Check Router!");
-      u8g2.sendBuffer();
-    }
-  }
-
-  Serial.println("\nWiFi connected");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-
-  server.on("/", handleRoot);
-  server.on("/update", HTTP_POST, handleUpdate);
-  server.begin();
-
-  displayText = "Synced!";
-  updateDisplays(); // 여기서 화면을 갱신합니다.
+  Serial.begin(115200); Wire.begin(OLED_SDA, OLED_SCL);
+  oled.begin(SSD1306_SWITCHCAPVCC, 0x3C); u8g2.begin(); u8g2.setContrast(22);
+  pinMode(2, OUTPUT); analogWrite(2, lcdBrightness); WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) { delay(500); }
+  server.on("/", handleRoot); server.on("/update", HTTP_POST, handleUpdate); server.on("/update", HTTP_GET, handleUpdate); server.on("/sw", handleSW); server.on("/tm", handleTimer);
+  server.begin(); timeClient.begin(); fetchWeather(); updateDisplays();
 }
 
 void loop() {
   server.handleClient();
+  
+  // 부팅 후 5초간 IP 표시 후 자동 모드 전환
+  if (!isControlMode && WiFi.status() == WL_CONNECTED) {
+    if (connectTime == 0) connectTime = millis();
+    if (millis() - connectTime > 5000) {
+      isControlMode = true;
+      updateDisplays();
+    }
+  }
+
+  static unsigned long lastRefresh = 0;
+  unsigned long interval = 1000; // 기본 (OLED 업타임 갱신용)
+  if (displayMode == 4) interval = 30;      // 애니메이션
+  else if (displayMode == 3) interval = 200; // 시계
+  else if (displayMode == 1) interval = 500; // 시스템 정보 (초 단위)
+
+  if (millis() - lastRefresh >= interval) {
+    updateDisplays();
+    lastRefresh = millis();
+  }
+
+  if (millis() - lastWeatherUpdate > weatherInterval) {
+    fetchWeather();
+    if (displayMode == 2) updateDisplays();
+  }
 }
