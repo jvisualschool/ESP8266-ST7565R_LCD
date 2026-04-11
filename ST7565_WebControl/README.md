@@ -57,13 +57,37 @@ This project transforms an ESP8266 (NodeMCU 1.0) into a comprehensive informatio
 *   `NTPClient` / `WiFiUdp`
 *   `ESP8266HTTPClient`
 
-## ⚙️ Configuration
+## ⚙️ How to Build & Upload
+
+### Option 1: Arduino IDE (GUI)
+1.  Install the **ESP8266** board manager (URL: `http://arduino.esp8266.com/stable/package_esp8266com_index.json`).
+2.  Install all required libraries via Library Manager.
+3.  Select Board: `NodeMCU 1.0 (ESP-12E Module)`.
+4.  Set CPU Frequency to `160 MHz`.
+5.  Rename `config.h.example` to `config.h` and update your WiFi/API credentials.
+6.  Click the **Upload** button.
+
+### Option 2: Arduino CLI (Terminal)
+Ensure `arduino-cli` is installed (e.g., via Homebrew on Mac).
+
+1.  **Initialize & Core Install**:
+    ```bash
+    arduino-cli core install esp8266:esp8266
+    ```
+2.  **Compile & Upload**:
+    Navigate to the project directory and run:
+    ```bash
+    arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 --upload --port /dev/cu.usbserial-10 --build-property "build.f_cpu=160000000L" .
+    ```
+    *(Note: Adjust the `--port` value based on your actual device connection)*
+
+## 📝 Configuration
 Rename `config.h.example` to `config.h` and update your credentials:
 ```cpp
 const char* WIFI_SSID = "YOUR_SSID";
 const char* WIFI_PASSWORD = "YOUR_PASSWORD";
 const char* WEATHER_API_KEY = "YOUR_OPENWEATHERMAP_API_KEY";
-const char* WEATHER_CITY = "Seoul,kr";
+const char* WEATHER_CITY = "Paju,kr";
 ```
 
 ## 📝 License

@@ -141,23 +141,39 @@ void fetchWeather() {
   if (WiFi.status() == WL_CONNECTED) {
     WiFiClient client;
     HTTPClient http;
-    String url = "http://api.openweathermap.org/data/2.5/weather?q=Seoul,kr&appid=" + String(WEATHER_API_KEY) + "&units=metric";
+    // config.h의 WEATHER_CITY를 사용하도록 수정
+    String url = "http://api.openweathermap.org/data/2.5/weather?q=" + String(WEATHER_CITY) + "&appid=" + String(WEATHER_API_KEY) + "&units=metric";
+    
+    Serial.println("\n[Weather] Fetching update...");
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     if (http.begin(client, url)) {
       int httpCode = http.GET();
       if (httpCode == HTTP_CODE_OK) {
         String payload = http.getString();
         DynamicJsonDocument doc(1024);
-        deserializeJson(doc, payload);
-        weatherMain = doc["weather"][0]["main"].as<String>();
-        weatherDesc = doc["weather"][0]["description"].as<String>();
-        weatherTemp = doc["main"]["temp"];
-        weatherHumid = doc["main"]["humidity"];
-        weatherWind = doc["wind"]["speed"];
-        lastWeatherUpdate = millis();
+        DeserializationError error = deserializeJson(doc, payload);
+        
+        if (!error) {
+          weatherMain = doc["weather"][0]["main"].as<String>();
+          weatherDesc = doc["weather"][0]["description"].as<String>();
+          weatherTemp = doc["main"]["temp"];
+          weatherHumid = doc["main"]["humidity"];
+          weatherWind = doc["wind"]["speed"];
+          Serial.printf("[Weather] Success: %.1fC, %s\n", weatherTemp, weatherMain.c_str());
+        } else {
+          Serial.print("[Weather] JSON Parse Error: ");
+          Serial.println(error.c_str());
+        }
+      } else {
+        Serial.printf("[Weather] HTTP Error: %d\n", httpCode);
       }
       http.end();
     }
+  } else {
+    Serial.println("[Weather] WiFi not connected");
   }
+  // 실패하더라도 다음 인터벌까지 대기하여 API 스팸(차단) 방지
+  lastWeatherUpdate = millis();
 }
 
 void updateLCD() {
@@ -194,12 +210,26 @@ void updateLCD() {
       else u8g2.setFont(u8g2_font_logisoso58_tr);
 
       int width = u8g2.getStrWidth(displayText.c_str());
-      int x = (128 - width) / 2; if (x < 0) x = 0;
-      int y;
+      int x, y;
+      
+      // Y축 위치 계산 (기존 로직 유지)
       switch(fontSizeIndex) {
         case 0: y=35; break; case 1: y=36; break; case 2: y=37; break; case 3: y=38; break; case 4: y=40; break; case 5: y=42; break; case 6: y=44; break; case 7: y=48; break; case 8: y=52; break; case 9: y=56; break; case 10: y=60; break; default: y=44;
       }
-      u8g2.drawStr(x, y, displayText.c_str());
+
+      if (width > 128) {
+        // 스크롤 로직: 텍스트가 화면보다 길면 왼쪽으로 흐르게 함
+        int scrollArea = width + 40; // 텍스트 길이 + 여백
+        int offset = (millis() / 30) % scrollArea;
+        x = 128 - offset;
+        u8g2.drawStr(x, y, displayText.c_str());
+        // 연속성을 위해 뒤에 하나 더 그림
+        if (x < 0) u8g2.drawStr(x + scrollArea, y, displayText.c_str());
+      } else {
+        // 기존 중앙 정렬 로직
+        x = (128 - width) / 2;
+        u8g2.drawStr(x, y, displayText.c_str());
+      }
     } else if (displayMode == 1) {
       unsigned long s = millis() / 1000; unsigned long m = s / 60; unsigned long h = m / 60; unsigned long d = h / 24;
       s %= 60; m %= 60; h %= 24;
@@ -210,7 +240,9 @@ void updateLCD() {
       u8g2.setCursor(0, 49); u8g2.print("Free Heap: "); u8g2.print(ESP.getFreeHeap()/1024); u8g2.print(" KB");
       u8g2.setCursor(0, 61); u8g2.print("Uptime: "); u8g2.print(d); u8g2.print("d "); u8g2.print(h); u8g2.print("h "); u8g2.print(m); u8g2.print("m "); u8g2.print(s); u8g2.print("s");
     } else if (displayMode == 2) {
-      u8g2.setFont(u8g2_font_6x10_tf); u8g2.drawStr(0, 10, "SEOUL WEATHER"); u8g2.drawLine(0, 12, 128, 12);
+      char titleBuf[32];
+      sprintf(titleBuf, "%s WEATHER", WEATHER_CITY);
+      u8g2.setFont(u8g2_font_6x10_tf); u8g2.drawStr(0, 10, titleBuf); u8g2.drawLine(0, 12, 128, 12);
       u8g2.setFont(u8g2_font_7x14_tf); u8g2.setCursor(0, 28); u8g2.print(weatherTemp, 1); u8g2.print(" C, "); u8g2.print(weatherMain);
       u8g2.setFont(u8g2_font_6x10_tf); u8g2.setCursor(0, 42); u8g2.print("Desc: "); u8g2.print(weatherDesc);
       u8g2.setCursor(0, 52); u8g2.print("Humid: "); u8g2.print(weatherHumid); u8g2.print("%");
@@ -265,7 +297,11 @@ void updateLCD() {
         // 하단 날씨
         u8g2.setFont(u8g2_font_6x10_tf);
         char weaBuf[32];
-        sprintf(weaBuf, "Seoul: %.1fC, %s", weatherTemp, weatherMain.c_str());
+        if (weatherMain == "") {
+          sprintf(weaBuf, "Loading weather...");
+        } else {
+          sprintf(weaBuf, "%s: %.1fC, %s", WEATHER_CITY, weatherTemp, weatherMain.c_str());
+        }
         int ww = u8g2.getStrWidth(weaBuf);
         u8g2.drawStr((128 - ww) / 2, 62, weaBuf);
       }
@@ -296,15 +332,15 @@ void updateOLED() {
 
 void handleRoot() {
   if (!isControlMode) { isControlMode = true; updateLCD(); updateOLED(); }
-  String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><style>body{font-family:'Inter',sans-serif;background:#0f172a;color:#f8fafc;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}.container{background:#1e293b;padding:2rem;border-radius:1.5rem;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);width:90%;max-width:400px;}h1{font-size:1.5rem;margin-bottom:1.5rem;text-align:center;color:#38bdf8;}.group{margin-bottom:1.2rem;}label{display:block;margin-bottom:0.5rem;font-size:0.875rem;color:#94a3b8;}input[type='text'],select{width:100%;padding:0.75rem;border-radius:0.75rem;border:1px solid #334155;background:#0f172a;color:white;box-sizing:border-box;}input[type='range']{width:100%;cursor:pointer;accent-color:#38bdf8;}button{width:100%;padding:0.75rem;border-radius:0.75rem;border:none;background:#0ea5e9;color:white;font-weight:600;cursor:pointer;transition:0.3s;}button:hover{background:#0284c7;}</style></head><body><div class='container'><h1>Dashboard</h1><form action='/update' method='POST'><div class='group'><label>Message</label><input type='text' name='msg' value='"+displayText+"'></div><div class='group'><label>Rotation</label><select name='rot'>";
-  for(int i=0; i<4; i++) html += "<option value='"+String(i)+"'"+(rotationMode==i?" selected":"")+">"+String(i*90)+"</option>";
-  html += "</select></div><div class='group'><label>LCD Bright</label><input type='range' name='lcd' min='0' max='1023' value='"+String(lcdBrightness)+"'></div><div class='group'><label>Font Size</label><select name='fsize'>";
-  int sz[] = {6,8,10,12,16,20,24,32,42,50,58};
-  for(int i=0; i<11; i++) html += "<option value='"+String(i)+"'"+(fontSizeIndex==i?" selected":"")+">"+String(sz[i])+" px</option>";
-  html += "</select></div><div class='group'><label>Mode</label><select name='mode'>";
+  String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><style>body{font-family:'Inter',sans-serif;background:#0f172a;color:#f8fafc;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}.container{background:#1e293b;padding:2rem;border-radius:1.5rem;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);width:90%;max-width:400px;}h1{font-size:1.5rem;margin-bottom:1.5rem;text-align:center;color:#38bdf8;}.group{margin-bottom:1.2rem;}label{display:block;margin-bottom:0.5rem;font-size:0.875rem;color:#94a3b8;}input[type='text'],select{width:100%;padding:0.75rem;border-radius:0.75rem;border:1px solid #334155;background:#0f172a;color:white;box-sizing:border-box;}input[type='range']{width:100%;cursor:pointer;accent-color:#38bdf8;}button{width:100%;padding:0.75rem;border-radius:0.75rem;border:none;background:#0ea5e9;color:white;font-weight:600;cursor:pointer;transition:0.3s;}button:hover{background:#0284c7;}.row{display:flex;gap:10px;}</style></head><body><div class='container'><h1>Dashboard</h1><form action='/update' method='POST'><div class='group'><label>Mode</label><select name='mode' onchange='fetch(\"/update?mode=\"+this.value).then(()=>location.reload())'>";
   String md[] = {"Message", "System", "Weather", "Clock", "Animation"};
   for(int i=0; i<5; i++) html += "<option value='"+String(i)+"'"+(displayMode==i?" selected":"")+">"+md[i]+"</option>";
-  html += "</select></div>";
+  html += "</select></div><div class='row'><div class='group' style='flex:8;'><label>Message</label><input type='text' name='msg' value='"+displayText+"'></div><div class='group' style='flex:2;'><label>Font</label><select name='fsize' onchange='fetch(\"/update?fsize=\"+this.value)'>";
+  int sz[] = {6,8,10,12,16,20,24,32,42,50,58};
+  for(int i=0; i<11; i++) html += "<option value='"+String(i)+"'"+(fontSizeIndex==i?" selected":"")+">"+String(sz[i])+"</option>";
+  html += "</select></div></div><div class='group'><label>Rotation</label><select name='rot'>";
+  for(int i=0; i<4; i++) html += "<option value='"+String(i)+"'"+(rotationMode==i?" selected":"")+">"+String(i*90)+"</option>";
+  html += "</select></div><div class='group'><label>LCD+OLED Bright</label><input type='range' name='lcd' min='0' max='1023' value='"+String(lcdBrightness)+"' oninput='fetch(\"/update?lcd=\"+this.value)'></div>";
 
   if(displayMode==4){ html += "<div class='group'><label>Anim</label><select name='atype' onchange='fetch(\"/update?atype=\"+this.value).then(()=>location.reload())'>";
     for(int i=0; i<10; i++) html += "<option value='"+String(i)+"'"+(animType==i?" selected":"")+">Anim "+String(i+1)+"</option>";
@@ -317,7 +353,13 @@ void handleRoot() {
 void handleUpdate() {
   if (server.hasArg("msg")) displayText = server.arg("msg");
   if (server.hasArg("rot")) rotationMode = server.arg("rot").toInt();
-  if (server.hasArg("lcd")) { lcdBrightness = server.arg("lcd").toInt(); analogWrite(2, lcdBrightness); }
+  if (server.hasArg("lcd")) { 
+    lcdBrightness = server.arg("lcd").toInt(); 
+    oledBrightness = map(lcdBrightness, 0, 1023, 0, 255);
+    analogWrite(2, lcdBrightness); 
+    oled.ssd1306_command(SSD1306_SETCONTRAST);
+    oled.ssd1306_command(oledBrightness);
+  }
   if (server.hasArg("fsize")) fontSizeIndex = server.arg("fsize").toInt();
   if (server.hasArg("mode")) { displayMode = server.arg("mode").toInt(); if (displayMode == 2) fetchWeather(); }
   if (server.hasArg("atype")) animType = server.arg("atype").toInt();
